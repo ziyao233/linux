@@ -10,6 +10,7 @@
  */
 
 #include <linux/bitfield.h>
+#include <linux/soc/amlogic/meson-canvas.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -20,6 +21,8 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_panic.h>
 
 #include "meson_plane.h"
 #include "meson_registers.h"
@@ -140,7 +143,7 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 	struct meson_drm *priv = meson_plane->priv;
 	struct drm_framebuffer *fb = new_state->fb;
 	struct drm_gem_dma_object *gem;
-	unsigned long flags;
+	unsigned long flags, flags2;
 	int vsc_ini_rcv_num, vsc_ini_rpt_p0_num;
 	int vsc_bot_rcv_num, vsc_bot_rpt_p0_num;
 	int hsc_ini_rcv_num, hsc_ini_rpt_p0_num;
@@ -158,6 +161,7 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 	 * Enable Plane
 	 */
 	spin_lock_irqsave(&priv->drm->event_lock, flags);
+	drm_panic_lock(priv->drm, flags2);
 
 	/* Check if AFBC decoder is required for this buffer */
 	if ((meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
@@ -394,6 +398,7 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 	priv->viu.osd1_enabled = true;
 
 	spin_unlock_irqrestore(&priv->drm->event_lock, flags);
+	drm_panic_unlock(priv->drm, flags2);
 }
 
 static void meson_plane_atomic_disable(struct drm_plane *plane,
@@ -419,10 +424,43 @@ static void meson_plane_atomic_disable(struct drm_plane *plane,
 	priv->viu.osd1_enabled = false;
 }
 
+static int meson_plane_get_scanout_buffer(struct drm_plane *plane,
+					  struct drm_scanout_buffer *sb)
+{
+	struct meson_plane *meson_plane = to_meson_plane(plane);
+	struct meson_drm *priv = meson_plane->priv;
+	struct drm_framebuffer *fb;
+
+	if (!meson_plane->enabled)
+		return -ENODEV;
+
+	if (priv->viu.osd1_afbcd)
+		return -EOPNOTSUPP;
+
+	if (priv->viu.osd1_commit)
+		meson_canvas_config(priv->canvas, priv->canvas_id_osd1,
+				    priv->viu.osd1_addr,
+				    priv->viu.osd1_stride,
+				    priv->viu.osd1_height,
+				    MESON_CANVAS_WRAP_NONE,
+				    MESON_CANVAS_BLKMODE_LINEAR, 0);
+		priv->viu.osd1_commit = false;
+	}
+
+	fb = plane->state->fb;
+	sb->format	= fb->format;
+	sb->width	= fb->width;
+	sb->height	= fb->height;
+	sb->pitch[0]	= fb->pitches[0];
+
+	return drm_gem_fb_vmap(fb, sb->map, NULL);
+}
+
 static const struct drm_plane_helper_funcs meson_plane_helper_funcs = {
-	.atomic_check	= meson_plane_atomic_check,
-	.atomic_disable	= meson_plane_atomic_disable,
-	.atomic_update	= meson_plane_atomic_update,
+	.atomic_check		= meson_plane_atomic_check,
+	.atomic_disable		= meson_plane_atomic_disable,
+	.atomic_update		= meson_plane_atomic_update,
+	.get_scanout_buffer	= meson_plane_get_scanout_buffer,
 };
 
 static bool meson_plane_format_mod_supported(struct drm_plane *plane,

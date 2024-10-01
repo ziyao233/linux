@@ -14,6 +14,7 @@
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_device.h>
+#include <drm/drm_panic.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
@@ -316,6 +317,8 @@ void meson_crtc_irq(struct meson_drm *priv)
 	unsigned long flags;
 
 	/* Update the OSD registers */
+	drm_panic_lock(priv->drm, flags);
+
 	if (priv->viu.osd1_enabled && priv->viu.osd1_commit) {
 		writel_relaxed(priv->viu.osd1_ctrl_stat,
 				priv->io_base + _REG(VIU_OSD1_CTRL_STAT));
@@ -387,6 +390,8 @@ void meson_crtc_irq(struct meson_drm *priv)
 
 		priv->viu.osd1_commit = false;
 	}
+
+	drm_panic_unlock(priv->drm, flags);
 
 	/* Update the VD1 registers */
 	if (priv->viu.vd1_enabled && priv->viu.vd1_commit) {
