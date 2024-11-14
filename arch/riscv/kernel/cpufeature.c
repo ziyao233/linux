@@ -594,8 +594,7 @@ static int __init riscv_fill_hwcap_from_ext_list(unsigned long *isa2hwcap)
 		riscv_fill_vendor_ext_list(cpu);
 	}
 
-	if (riscv_isa_vendor_extension_available(THEAD_VENDOR_ID, XTHEADVECTOR) &&
-	    has_thead_homogeneous_vlenb() < 0) {
+	if (has_xtheadvector_no_alternatives() && has_thead_homogeneous_vlenb() < 0) {
 		pr_warn("Unsupported heterogeneous vlenb detected, vector extension disabled.\n");
 		disable_xtheadvector();
 	}
@@ -652,7 +651,15 @@ void __init riscv_fill_hwcap(void)
 		elf_hwcap &= ~COMPAT_HWCAP_ISA_F;
 	}
 
-	if ((elf_hwcap & COMPAT_HWCAP_ISA_V) || test_bit(RISCV_ISA_EXT_XTHEADVECTOR, hart_isa[0].isa)) {
+	if (__riscv_isa_extension_available(NULL, RISCV_ISA_EXT_ZVE32X) ||
+	    has_xtheadvector_no_alternatives()) {
+		/*
+		 * This cannot fail when called on the boot hart
+		 */
+		riscv_v_setup_vsize();
+	}
+
+	if (elf_hwcap & COMPAT_HWCAP_ISA_V) {
 		riscv_v_setup_vsize();
 		/*
 		 * ISA string in device tree might have 'v' flag, but
