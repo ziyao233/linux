@@ -42,7 +42,7 @@ struct spacemit_pcie {
 static int spacemit_pcie_start_link(struct dw_pcie *pci)
 {
 	struct spacemit_pcie *spacemit_pcie = to_spacemit_pcie(pci);
-        u64 ctl_reg = spacemit_pcie->app_base + PCIE_APP_CTL;
+        void __iomem *ctl_reg = spacemit_pcie->app_base + PCIE_APP_CTL;
 
         writel(readl(ctl_reg) | CTL_LTSSM_ENABLE, ctl_reg);
 	return 0;
@@ -52,36 +52,10 @@ static int spacemit_pcie_link_up(struct dw_pcie *pci)
 {
         volatile u32 ltssm_state = 0;
         struct spacemit_pcie *spacemit_pcie = to_spacemit_pcie(pci);
-	u64 state_reg = spacemit_pcie->app_base + PCIE_APP_STATE;
+	void __iomem *state_reg = spacemit_pcie->app_base + PCIE_APP_STATE;
 
         ltssm_state = readl(state_reg) & LTSSM_STATE_MASK;
 	return !!ltssm_state;
-}
-
-static irqreturn_t spacemit_pcie_irq_handler(int irq, void *arg)
-{
-	struct spacemit_pcie *spacemit_pcie = arg;
-	struct dw_pcie *pci = spacemit_pcie->pci;
-	struct dw_pcie_rp *pp = &pci->pp;
-	u64    intsta_reg = 0;
-	unsigned int status;
-
-        intsta_reg = spacemit_pcie->app_base + PCIE_APP_INTSTA;
-	status = readl(intsta_reg);
-
-	if (status & 3) {
-		BUG_ON(!IS_ENABLED(CONFIG_PCI_MSI));
-		dw_handle_msi_irq(pp);
-	}
-
-	writel(status, intsta_reg);
-
-	return IRQ_HANDLED;
-}
-
-static void spacemit_pcie_enable_interrupts(struct spacemit_pcie *spacemit_pcie)
-{
-	u64 inten_reg = spacemit_pcie->app_base + PCIE_APP_INTEN;
 }
 
 static int spacemit_pcie_host_init(struct dw_pcie_rp *pp)
@@ -120,7 +94,6 @@ static int spacemit_pcie_probe(struct platform_device *pdev)
 	struct dw_pcie_rp *pp;
 	struct dw_pcie *pci;
 	struct spacemit_pcie *spacemit_pcie;
-	struct device_node *np = dev->of_node;
 	int ret;
 
         spacemit_pcie = devm_kzalloc(dev, sizeof(*spacemit_pcie), GFP_KERNEL);
