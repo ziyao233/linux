@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (GPL-2.0-or-later OR MIT) */
+/* SPDX-License-Identifier: (GPL-2.0-only OR MIT) */
 /*
  * Copyright (c) 2022 Rockchip Electronics Co. Ltd.
  * Copyright (c) 2024 Yao Zi <ziyao@disroot.org>
