@@ -48,6 +48,8 @@ properties:
 required:
   - compatible
   - reg
+  - clocks
+  - clock-names
   - "#clock-cells"
   - "#reset-cells"
 
