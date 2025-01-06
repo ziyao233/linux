@@ -20,8 +20,7 @@ description: |
 
 properties:
   compatible:
-    enum:
-      - rockchip,rk3528-cru
+    const: rockchip,rk3528-cru
 
   reg:
     maxItems: 1
