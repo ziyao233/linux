@@ -96,10 +96,10 @@
 		#clock-cells = <0>;
 	};
 
-	phy50m_clk: clock-phy50m {
+	gmac0_clk: clock-gmac50m {
 		compatible = "fixed-clock";
 		clock-frequency = <50000000>;
-		clock-output-names = "phy_50m_out";
+		clock-output-names = "gmac0";
 		#clock-cells = <0>;
 	};
 
@@ -159,6 +159,8 @@
 				<100000000>,
 				<125000000>,
 				<500000000>;
+			clocks = <&xin24m>, <&gmac0_clk>;
+			clock-names = "xin24m", "gmac0";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 		};
