@@ -57,7 +57,7 @@ additionalProperties: false
 
 examples:
   - |
-    cru: clock-controller@ff4a0000 {
+    clock-controller@ff4a0000 {
         compatible = "rockchip,rk3528-cru";
         reg = <0xff4a0000 0x30000>;
         #clock-cells = <1>;
