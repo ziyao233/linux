@@ -1122,13 +1122,13 @@ static struct rockchip_clk_branch rk3528_clk_branches[] __initdata = {
 	       0, 1, 1),
 
 	/* gmac */
-	DIV(CLK_GMAC0_SRC, "clk_gmac0_src", "phy_50m_out", 0,
+	DIV(CLK_GMAC0_SRC, "clk_gmac0_src", "gmac0", 0,
 	    RK3528_CLKSEL_CON(84), 3, 6, DFLAGS),
 	GATE(CLK_GMAC0_TX, "clk_gmac0_tx", "clk_gmac0_src", 0,
 	     RK3528_CLKGATE_CON(41), 13, GFLAGS),
 	GATE(CLK_GMAC0_RX, "clk_gmac0_rx", "clk_gmac0_src", 0,
 	     RK3528_CLKGATE_CON(41), 14, GFLAGS),
-	GATE(CLK_GMAC0_RMII_50M, "clk_gmac0_rmii_50m", "phy_50m_out", 0,
+	GATE(CLK_GMAC0_RMII_50M, "clk_gmac0_rmii_50m", "gmac0", 0,
 	     RK3528_CLKGATE_CON(41), 12, GFLAGS),
 
 	FACTOR(CLK_GMAC1_RMII_VPU, "clk_gmac1_50m", "clk_ppll_50m_src",
