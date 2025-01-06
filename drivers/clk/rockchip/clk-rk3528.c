@@ -1094,8 +1094,6 @@ static int __init clk_rk3528_probe(struct platform_device *pdev)
 				     ARRAY_SIZE(rk3528_cpuclk_rates));
 	rockchip_clk_register_branches(ctx, rk3528_clk_branches, nr_branches);
 
-	rockchip_register_softrst(np, 47, reg_base + RK3528_SOFTRST_CON(0),
-				  ROCKCHIP_SOFTRST_HIWORD_MASK);
 	rockchip_register_restart_notifier(ctx, RK3528_GLB_SRST_FST, NULL);
 
 	rockchip_clk_of_add_provider(np, ctx);
