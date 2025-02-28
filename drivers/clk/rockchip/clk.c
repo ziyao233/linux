@@ -701,6 +701,8 @@ void rockchip_clk_register_grf_branches(struct rockchip_clk_provider *ctx,
 		if (!clk)
 			pr_err("%s: failed to register clock %s: %ld\n",
 			       __func__, list->name, PTR_ERR(clk));
+		else
+			rockchip_clk_set_lookup(ctx, clk, list->id);
 	}
 }
 EXPORT_SYMBOL_GPL(rockchip_clk_register_grf_branches);
