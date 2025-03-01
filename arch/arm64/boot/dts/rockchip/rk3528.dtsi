@@ -269,8 +269,8 @@
 			reg = <0x0 0xffc10000 0x0 0x4000>;
 			clocks = <&cru HCLK_SDIO0>,
 				 <&cru CCLK_SRC_SDIO0>,
-				 <&grf_cru SCLK_SDIO0_DRV>,
-				 <&grf_cru SCLK_SDIO0_SAMPLE>;
+				 <&cru SCLK_SDIO0_DRV>,
+				 <&cru SCLK_SDIO0_SAMPLE>;
 			clock-names = "biu", "ciu", "ciu-drive", "ciu-sample";
 			fifo-depth = <0x100>;
 			interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH>;
@@ -286,13 +286,13 @@
 			reg = <0x0 0xffc20000 0x0 0x4000>;
 			clocks = <&cru HCLK_SDIO1>,
 				 <&cru CCLK_SRC_SDIO1>,
-				 <&grf_cru SCLK_SDIO1_DRV>,
-				 <&grf_cru SCLK_SDIO1_SAMPLE>;
+				 <&cru SCLK_SDIO1_DRV>,
+				 <&cru SCLK_SDIO1_SAMPLE>;
 			clock-names = "biu", "ciu", "ciu-drive", "ciu-sample";
 			fifo-depth = <0x100>;
 			interrupts = <GIC_SPI 138 IRQ_TYPE_LEVEL_HIGH>;
 			max-frequency = <150000000>;
-			resets = <&cru SRST_HRESETN_SDIO1>;
+			resets = <&cru SRST_H_SDIO1>;
 			reset-names = "reset";
 			status = "disabled";
 		};
