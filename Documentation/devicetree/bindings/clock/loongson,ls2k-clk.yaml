@@ -16,6 +16,7 @@ description: |
 properties:
   compatible:
     enum:
+      - loongson,ls2k0300-clk
       - loongson,ls2k0500-clk
       - loongson,ls2k-clk  # This is for Loongson-2K1000
       - loongson,ls2k2000-clk
@@ -24,19 +25,32 @@ properties:
     maxItems: 1
 
   clocks:
-    items:
-      - description: 100m ref
+    maxItems: 1
 
-  clock-names:
-    items:
-      - const: ref_100m
+  clock-names: true
 
   '#clock-cells':
     const: 1
     description:
       The clock consumer should specify the desired clock by having the clock
       ID in its "clocks" phandle cell. See include/dt-bindings/clock/loongson,ls2k-clk.h
-      for the full list of Loongson-2 SoC clock IDs.
+      and include/dt-bindings/clock/loongson,ls2k0300-clk.h for the full list of
+      Loongson-2 SoC clock IDs.
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: loongson,ls2k0300-clk
+    then:
+      properties:
+        clock-names:
+          const: ref_120m
+    else:
+      properties:
+        clock-names:
+          const: ref_100m
 
 required:
   - compatible
