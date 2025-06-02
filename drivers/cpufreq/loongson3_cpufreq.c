@@ -50,32 +50,32 @@ union smc_message {
  * Input: feature ID
  * Output: feature flag
  */
-#define CMD_GET_FEATURE			0x2
+#define ABI2_CMD_GET_FEATURE		0x2
 
 /*
  * CMD_SET_FEATURE - Set feature state
  * Input: feature ID, feature flag
  * output: none
  */
-#define CMD_SET_FEATURE			0x3
+#define ABI2_CMD_SET_FEATURE		0x3
 
 /* Feature IDs */
-#define FEATURE_SENSOR			0
-#define FEATURE_FAN			1
-#define FEATURE_DVFS			2
+#define ABI2_FEATURE_SENSOR		0
+#define ABI2_FEATURE_FAN		1
+#define ABI2_FEATURE_DVFS		2
 
 /* Sensor feature flags */
-#define FEATURE_SENSOR_ENABLE		BIT(0)
-#define FEATURE_SENSOR_SAMPLE		BIT(1)
+#define ABI2_FEATURE_SENSOR_ENABLE	BIT(0)
+#define ABI2_FEATURE_SENSOR_SAMPLE	BIT(1)
 
 /* Fan feature flags */
-#define FEATURE_FAN_ENABLE		BIT(0)
-#define FEATURE_FAN_AUTO		BIT(1)
+#define ABI2_FEATURE_FAN_ENABLE		BIT(0)
+#define ABI2_FEATURE_FAN_AUTO		BIT(1)
 
 /* DVFS feature flags */
-#define FEATURE_DVFS_ENABLE		BIT(0)
-#define FEATURE_DVFS_BOOST		BIT(1)
-#define FEATURE_DVFS_AUTO		BIT(2)
+#define ABI2_FEATURE_DVFS_ENABLE	BIT(0)
+#define ABI2_FEATURE_DVFS_BOOST		BIT(1)
+#define ABI2_FEATURE_DVFS_AUTO		BIT(2)
 #define FEATURE_DVFS_SINGLE_BOOST	BIT(3)
 
 /* Sensor commands */
@@ -117,10 +117,10 @@ union smc_message {
  * Input: fan ID, type, value
  * Output: none
  */
-#define CMD_SET_FAN_INFO		0x8
+#define ABI2_CMD_SET_FAN_INFO		0x8
 
 /* Fan types */
-#define FAN_INFO_TYPE_LEVEL		0
+#define ABI2_FAN_INFO_TYPE_LEVEL	0
 
 /* DVFS commands */
 /*
@@ -128,41 +128,41 @@ union smc_message {
  * Input: CPU ID
  * Output: number
  */
-#define CMD_GET_FREQ_LEVEL_NUM		0x9
+#define ABI2_CMD_GET_FREQ_LEVEL_NUM	0x9
 
 /*
  * CMD_GET_FREQ_BOOST_LEVEL - Get the first boost level
  * Input: CPU ID
  * Output: number
  */
-#define CMD_GET_FREQ_BOOST_LEVEL	0x10
+#define ABI2_CMD_GET_FREQ_BOOST_LEVEL	0x10
 
 /*
  * CMD_GET_FREQ_LEVEL_INFO - Get freq level info
  * Input: CPU ID, level ID
  * Output: level info
  */
-#define CMD_GET_FREQ_LEVEL_INFO		0x11
+#define ABI2_CMD_GET_FREQ_LEVEL_INFO	0x11
 
 /*
  * CMD_GET_FREQ_INFO - Get freq info
  * Input: CPU ID, type
  * Output: freq info
  */
-#define CMD_GET_FREQ_INFO		0x12
+#define ABI2_CMD_GET_FREQ_INFO		0x12
 
 /*
  * CMD_SET_FREQ_INFO - Set freq info
  * Input: CPU ID, type, value
  * Output: none
  */
-#define CMD_SET_FREQ_INFO		0x13
+#define ABI2_CMD_SET_FREQ_INFO		0x13
 
 /* Freq types */
-#define FREQ_INFO_TYPE_FREQ		0
-#define FREQ_INFO_TYPE_LEVEL		1
+#define ABI2_FREQ_INFO_TYPE_FREQ	0
+#define ABI2_FREQ_INFO_TYPE_LEVEL	1
 
-#define FREQ_MAX_LEVEL			16
+#define ABI2_FREQ_MAX_LEVEL		16
 
 struct loongson3_freq_data {
 	unsigned int def_freq_level;
@@ -221,7 +221,8 @@ static unsigned int loongson3_cpufreq_get(unsigned int cpu)
 {
 	int ret;
 
-	ret = do_service_request(cpu, FREQ_INFO_TYPE_FREQ, CMD_GET_FREQ_INFO, 0, 0);
+	ret = do_service_request(cpu, ABI2_FREQ_INFO_TYPE_FREQ,
+				 ABI2_CMD_GET_FREQ_INFO, 0, 0);
 
 	return ret * KILO;
 }
@@ -231,7 +232,7 @@ static int loongson3_cpufreq_target(struct cpufreq_policy *policy, unsigned int 
 	int ret;
 
 	ret = do_service_request(cpu_data[policy->cpu].core,
-				 FREQ_INFO_TYPE_LEVEL, CMD_SET_FREQ_INFO, index, 0);
+				 ABI2_FREQ_INFO_TYPE_LEVEL, ABI2_CMD_SET_FREQ_INFO, index, 0);
 
 	return (ret >= 0) ? 0 : ret;
 }
@@ -245,17 +246,17 @@ static int configure_freq_table(int cpu)
 	if (per_cpu(freq_data, cpu))
 		return 0;
 
-	ret = do_service_request(cpu, 0, CMD_GET_FREQ_LEVEL_NUM, 0, 0);
+	ret = do_service_request(cpu, 0, ABI2_CMD_GET_FREQ_LEVEL_NUM, 0, 0);
 	if (ret < 0)
 		return ret;
 	max_level = ret;
 
-	ret = do_service_request(cpu, 0, CMD_GET_FREQ_BOOST_LEVEL, 0, 0);
+	ret = do_service_request(cpu, 0, ABI2_CMD_GET_FREQ_BOOST_LEVEL, 0, 0);
 	if (ret < 0)
 		return ret;
 	boost_level = ret;
 
-	freq_level = min(max_level, FREQ_MAX_LEVEL);
+	freq_level = min(max_level, ABI2_FREQ_MAX_LEVEL);
 	data = devm_kzalloc(&pdev->dev, struct_size(data, table, freq_level + 1), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
@@ -263,7 +264,8 @@ static int configure_freq_table(int cpu)
 	data->def_freq_level = boost_level - 1;
 
 	for (i = 0; i < freq_level; i++) {
-		ret = do_service_request(cpu, FREQ_INFO_TYPE_FREQ, CMD_GET_FREQ_LEVEL_INFO, i, 0);
+		ret = do_service_request(cpu, ABI2_FREQ_INFO_TYPE_FREQ,
+					 ABI2_CMD_GET_FREQ_LEVEL_INFO, i, 0);
 		if (ret < 0) {
 			devm_kfree(&pdev->dev, data);
 			return ret;
@@ -347,8 +349,8 @@ static int loongson3_cpufreq_probe(struct platform_device *pdev)
 	if (ret <= 0)
 		return -EPERM;
 
-	ret = do_service_request(FEATURE_DVFS, 0, CMD_SET_FEATURE,
-				 FEATURE_DVFS_ENABLE | FEATURE_DVFS_BOOST, 0);
+	ret = do_service_request(ABI2_FEATURE_DVFS, 0, ABI2_CMD_SET_FEATURE,
+				 ABI2_FEATURE_DVFS_ENABLE | ABI2_FEATURE_DVFS_BOOST, 0);
 	if (ret < 0)
 		return -EPERM;
 
