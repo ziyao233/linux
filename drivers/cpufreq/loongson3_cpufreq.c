@@ -283,7 +283,30 @@ static int configure_freq_table(int cpu)
 	return 0;
 }
 
-static int loongson3_cpufreq_cpu_init(struct cpufreq_policy *policy)
+static int loongson3_cpufreq_cpu_abi1_init(struct cpufreq_policy *policy)
+{
+	int i, ret, cpu = policy->cpu;
+
+	return -ENOTSUPP;
+
+	ret = configure_freq_table(cpu);
+	if (ret < 0)
+		return ret;
+
+	policy->cpuinfo.transition_latency = 10000;
+	policy->freq_table = per_cpu(freq_data, cpu)->table;
+	policy->suspend_freq = policy->freq_table[per_cpu(freq_data, cpu)->def_freq_level].frequency;
+	cpumask_copy(policy->cpus, topology_sibling_cpumask(cpu));
+
+	for_each_cpu(i, policy->cpus) {
+		if (i != cpu)
+			per_cpu(freq_data, i) = per_cpu(freq_data, cpu);
+	}
+
+	return 0;
+}
+
+static int loongson3_cpufreq_cpu_abi2_init(struct cpufreq_policy *policy)
 {
 	int i, ret, cpu = policy->cpu;
 
@@ -321,10 +344,24 @@ static int loongson3_cpufreq_cpu_offline(struct cpufreq_policy *policy)
 	return 0;
 }
 
-static struct cpufreq_driver loongson3_cpufreq_driver = {
+static struct cpufreq_driver loongson3_cpufreq_abi1_driver = {
 	.name = "loongson3",
 	.flags = CPUFREQ_CONST_LOOPS,
-	.init = loongson3_cpufreq_cpu_init,
+	.init = loongson3_cpufreq_cpu_abi1_init,
+	.exit = loongson3_cpufreq_cpu_exit,
+	.online = loongson3_cpufreq_cpu_online,
+	.offline = loongson3_cpufreq_cpu_offline,
+	.get = loongson3_cpufreq_get,
+	.target_index = loongson3_cpufreq_target,
+	.verify = cpufreq_generic_frequency_table_verify,
+	.set_boost = cpufreq_boost_set_sw,
+	.suspend = cpufreq_generic_suspend,
+};
+
+static struct cpufreq_driver loongson3_cpufreq_abi2_driver = {
+	.name = "loongson3",
+	.flags = CPUFREQ_CONST_LOOPS,
+	.init = loongson3_cpufreq_cpu_abi2_init,
 	.exit = loongson3_cpufreq_cpu_exit,
 	.online = loongson3_cpufreq_cpu_online,
 	.offline = loongson3_cpufreq_cpu_offline,
@@ -337,7 +374,8 @@ static struct cpufreq_driver loongson3_cpufreq_driver = {
 
 static int loongson3_cpufreq_probe(struct platform_device *pdev)
 {
-	int i, ret;
+	struct cpufreq_driver *driver;
+	int i, ret, abi;
 
 	for (i = 0; i < MAX_PACKAGES; i++) {
 		ret = devm_mutex_init(&pdev->dev, &cpufreq_mutex[i]);
@@ -345,18 +383,26 @@ static int loongson3_cpufreq_probe(struct platform_device *pdev)
 			return ret;
 	}
 
-	ret = do_service_request(0, 0, CMD_GET_VERSION, 0, 0);
-	if (ret <= 0)
+	abi = do_service_request(0, 0, CMD_GET_VERSION, 0, 0);
+	if (abi < 0)
 		return -EPERM;
 
-	ret = do_service_request(ABI2_FEATURE_DVFS, 0, ABI2_CMD_SET_FEATURE,
-				 ABI2_FEATURE_DVFS_ENABLE | ABI2_FEATURE_DVFS_BOOST, 0);
-	if (ret < 0)
-		return -EPERM;
+	pr_info("loongson3_cpufreq: firmware ABI version %d\n", ret);
 
-	loongson3_cpufreq_driver.driver_data = pdev;
+	if (abi == 0) {
+		driver = &loongson3_cpufreq_abi1_driver;
+	} else {
+		ret = do_service_request(ABI2_FEATURE_DVFS, 0, ABI2_CMD_SET_FEATURE,
+					 ABI2_FEATURE_DVFS_ENABLE | ABI2_FEATURE_DVFS_BOOST, 0);
+		if (ret < 0)
+			return -EPERM;
 
-	ret = cpufreq_register_driver(&loongson3_cpufreq_driver);
+		driver = &loongson3_cpufreq_abi2_driver;
+	}
+
+	driver->driver_data = pdev;
+
+	ret = cpufreq_register_driver(driver);
 	if (ret)
 		return ret;
 
