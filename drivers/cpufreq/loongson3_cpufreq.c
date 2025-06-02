@@ -16,6 +16,7 @@
 #include <asm/idle.h>
 #include <asm/loongarch.h>
 #include <asm/loongson.h>
+#include <asm/time.h>
 
 /* Message */
 union smc_message {
@@ -27,6 +28,13 @@ union smc_message {
 		u32 cmd		: 6;
 		u32 extra	: 1;
 		u32 complete	: 1;
+	};
+	struct {
+		u32 min_level		: 4;
+		u32 max_level		: 4;
+		u32 boost_freq		: 16;
+		u32 normal_core_limit	: 4;
+		u32 boost_cores		: 4;
 	};
 };
 
@@ -43,6 +51,9 @@ union smc_message {
  * Output: version
  */
 #define CMD_GET_VERSION			0x1
+
+#define ABI1_CMD_VOLTAGE		0x21
+#define ABI1_CMD_GET_DVFS_INFO		0x22
 
 /* Feature commands */
 /*
@@ -165,7 +176,7 @@ union smc_message {
 #define ABI2_FREQ_MAX_LEVEL		16
 
 struct loongson3_freq_data {
-	unsigned int def_freq_level;
+	unsigned int min_freq_level, def_freq_level;
 	struct cpufreq_frequency_table table[];
 };
 
@@ -174,7 +185,7 @@ static struct cpufreq_driver *loongson3_cpufreq_current_driver;
 static DEFINE_PER_CPU(struct loongson3_freq_data *, freq_data);
 
 static inline int do_service_request_raw(u32 id, u32 info, u32 cmd, u32 val,
-					 u32 extra, u32 *raw)
+					 u32 extra, union smc_message *raw)
 {
 	int retries;
 	unsigned int cpu = raw_smp_processor_id();
@@ -216,7 +227,7 @@ static inline int do_service_request_raw(u32 id, u32 info, u32 cmd, u32 val,
 	mutex_unlock(&cpufreq_mutex[package]);
 
 	if (raw)
-		*raw = msg.value;
+		*raw = msg;
 
 	return msg.val;
 }
@@ -234,7 +245,26 @@ static unsigned int loongson3_cpufreq_get(unsigned int cpu)
 	return ret * KILO;
 }
 
-static int loongson3_cpufreq_target(struct cpufreq_policy *policy, unsigned int index)
+static int loongson3_cpufreq_abi1_target(struct cpufreq_policy *policy, unsigned int index)
+{
+	unsigned int cpu = policy->cpu;
+	int ret;
+
+	pr_info("%s: setting to level %d, freq = %u\n", __func__,
+		index + per_cpu(freq_data, cpu)->min_freq_level,
+		per_cpu(freq_data, cpu)->table[index].frequency);
+
+	index += per_cpu(freq_data, cpu)->min_freq_level;
+
+	ret = do_service_request(cpu_data[cpu].core, index, ABI1_CMD_VOLTAGE,
+				 0, 0);
+
+	pr_info("%s: ret = %d\n", __func__, ret);
+
+	return (ret >= 0) ? 0 : ret;
+}
+
+static int loongson3_cpufreq_abi2_target(struct cpufreq_policy *policy, unsigned int index)
 {
 	int ret;
 
@@ -242,6 +272,50 @@ static int loongson3_cpufreq_target(struct cpufreq_policy *policy, unsigned int 
 				 ABI2_FREQ_INFO_TYPE_LEVEL, ABI2_CMD_SET_FREQ_INFO, index, 0);
 
 	return (ret >= 0) ? 0 : ret;
+}
+
+static int configure_abi1_freq_table(int cpu)
+{
+	struct platform_device *pdev = cpufreq_get_driver_data();
+	struct loongson3_freq_data *data;
+	int ret, freq_level, i;
+	union smc_message msg;
+
+	if (per_cpu(freq_data, cpu))
+		return 0;
+
+	ret = do_service_request_raw(cpu, 0, ABI1_CMD_GET_DVFS_INFO, 0, 0, &msg);
+	if (ret < 0)
+		return ret;
+
+	pr_info("%s: min_level = %u, max_level = %u\n", __func__,
+		msg.min_level, msg.max_level);
+
+	freq_level = msg.max_level - msg.min_level + 1;
+	data = devm_kzalloc(&pdev->dev, struct_size(data, table, freq_level + 1),
+			    GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	data->def_freq_level = 0;
+	data->min_freq_level = msg.min_level;
+
+	for (i = 0; i < freq_level; i++) {
+		data->table[i].frequency = cpu_clock_freq / KILO * (8 - i) / 8;
+		pr_info("%s: i = %d, frequency = %u\n", __func__,
+			i, data->table[i].frequency);
+		data->table[i].flags = 0;
+	}
+
+	data->table[freq_level].frequency = CPUFREQ_TABLE_END;
+	data->table[freq_level].flags = 0;
+
+	pr_info("%s: def freq = %u\n", __func__,
+		data->table[data->def_freq_level].frequency);
+
+	per_cpu(freq_data, cpu) = data;
+
+	return 0;
 }
 
 static int configure_abi2_freq_table(int cpu)
@@ -294,11 +368,7 @@ static int loongson3_cpufreq_cpu_abi1_init(struct cpufreq_policy *policy)
 {
 	int i, ret, cpu = policy->cpu;
 
-	pr_info("%s: enter\n", __func__);
-
-	return -ENOTSUPP;
-
-	ret = configure_abi2_freq_table(cpu);
+	ret = configure_abi1_freq_table(cpu);
 	if (ret < 0)
 		return ret;
 
@@ -333,14 +403,21 @@ static int loongson3_cpufreq_cpu_abi2_init(struct cpufreq_policy *policy)
 			per_cpu(freq_data, i) = per_cpu(freq_data, cpu);
 	}
 
-	return 0;
+	return -ENOTSUPP;
 }
 
-static void loongson3_cpufreq_cpu_exit(struct cpufreq_policy *policy)
+static void loongson3_cpufreq_cpu_abi1_exit(struct cpufreq_policy *policy)
 {
 	int cpu = policy->cpu;
 
-	loongson3_cpufreq_target(policy, per_cpu(freq_data, cpu)->def_freq_level);
+	loongson3_cpufreq_abi1_target(policy, per_cpu(freq_data, cpu)->def_freq_level);
+}
+
+static void loongson3_cpufreq_cpu_abi2_exit(struct cpufreq_policy *policy)
+{
+	int cpu = policy->cpu;
+
+	loongson3_cpufreq_abi2_target(policy, per_cpu(freq_data, cpu)->def_freq_level);
 }
 
 static int loongson3_cpufreq_cpu_online(struct cpufreq_policy *policy)
@@ -357,11 +434,10 @@ static struct cpufreq_driver loongson3_cpufreq_abi1_driver = {
 	.name = "loongson3",
 	.flags = CPUFREQ_CONST_LOOPS,
 	.init = loongson3_cpufreq_cpu_abi1_init,
-	.exit = loongson3_cpufreq_cpu_exit,
+	.exit = loongson3_cpufreq_cpu_abi1_exit,
 	.online = loongson3_cpufreq_cpu_online,
 	.offline = loongson3_cpufreq_cpu_offline,
-	.get = loongson3_cpufreq_get,
-	.target_index = loongson3_cpufreq_target,
+	.target_index = loongson3_cpufreq_abi1_target,
 	.verify = cpufreq_generic_frequency_table_verify,
 	.set_boost = cpufreq_boost_set_sw,
 	.suspend = cpufreq_generic_suspend,
@@ -371,11 +447,11 @@ static struct cpufreq_driver loongson3_cpufreq_abi2_driver = {
 	.name = "loongson3",
 	.flags = CPUFREQ_CONST_LOOPS,
 	.init = loongson3_cpufreq_cpu_abi2_init,
-	.exit = loongson3_cpufreq_cpu_exit,
+	.exit = loongson3_cpufreq_cpu_abi2_exit,
 	.online = loongson3_cpufreq_cpu_online,
 	.offline = loongson3_cpufreq_cpu_offline,
 	.get = loongson3_cpufreq_get,
-	.target_index = loongson3_cpufreq_target,
+	.target_index = loongson3_cpufreq_abi2_target,
 	.verify = cpufreq_generic_frequency_table_verify,
 	.set_boost = cpufreq_boost_set_sw,
 	.suspend = cpufreq_generic_suspend,
