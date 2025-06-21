@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/bus/loongarch-iocsr-bus.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: IOCSR-based Bus on LoongArch Platforms
+
+maintainers:
+  - Yao Zi <ziyao@disroot.org>
+
+description:
+  LoongArch platforms may implement IOCSR operation instructions, which access
+  an independent byte-addressed address space. This documentation describes the
+  binding for the IOCSR-based bus.
+
+properties:
+  compatible:
+    const: loongarch-iocsr-bus
+
+  '#address-cells':
+    const: 2
+
+  '#size-cells':
+    const: 2
+
+required:
+  - compatible
+  - '#address-cells'
+  - '#size-cells'
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    iocsr {
+        compatible = "loongarch-iocsr-bus";
+        #address-cells = <2>;
+        #size-cells = <2>;
+    };
