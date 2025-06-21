@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/loongarch/iocsr.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: LoongArch IOCSRs
+
+maintainers:
+  - Yao Zi <ziyao@disroot.org>
+
+description:
+  Definition of LoongArch IOCSRs depend on the specific platform. This
+  document describes known LoongArch IOCSRs that independently serve for a
+  dedicated purpose.
+
+properties:
+  compatible:
+    anyOf:
+      - const: loongson,iocsr-vendor
+        description:
+          The "VENDOR" IOCSR for recording manufacturer of the device, contains
+          constant string "Loongson" on known devices. Note that this IOCSR
+          is writable and should be set up by firmware.
+
+      - const: loongson,iocsr-cpuname
+        description:
+          The "CPUNAME" IOCSR for recording production name of the chip. Note
+          that this IOCSR is writable and should be set up by firmware.
+
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    iocsr {
+        compatible = "loongarch-iocsr-bus";
+        #address-cells = <2>;
+        #size-cells = <2>;
+
+        vendor@10 {
+            compatible = "loongson,iocsr-vendor";
+            reg = <0x0 0x10 0x0 0x8>;
+        };
+
+        cpuname@20 {
+            compatible = "loongson,iocsr-cpuname";
+            reg = <0x0 0x20 0x0 0x8>;
+        };
+    };
