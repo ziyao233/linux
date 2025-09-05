@@ -25,8 +25,7 @@
 #define        ERRATA_THEAD_CMO 1
 #define        ERRATA_THEAD_PMU 2
 #define        ERRATA_THEAD_WRITE_ONCE 3
-#define        ERRATA_THEAD_VECTOR 4
-#define        ERRATA_THEAD_NUMBER 5
+#define        ERRATA_THEAD_NUMBER 4
 #endif
 
 #endif
