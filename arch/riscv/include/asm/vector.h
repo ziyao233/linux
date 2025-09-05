@@ -26,8 +26,7 @@ bool riscv_v_first_use_handler(struct pt_regs *regs);
 
 static __always_inline bool has_vector(void)
 {
-	return riscv_has_extension_unlikely(RISCV_ISA_EXT_v) ||
-	  riscv_has_extension_unlikely(RISCV_ISA_EXT_XTHEADVECTOR);
+	return riscv_has_extension_unlikely(RISCV_ISA_EXT_v);
 }
 
 static __always_inline bool has_xtheadvector(void)
