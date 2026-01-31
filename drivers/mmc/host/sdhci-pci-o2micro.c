@@ -197,13 +197,17 @@ static int sdhci_o2_wait_dll_detect_lock(struct sdhci_host *host)
 		scratch32, !(scratch32 & O2_DLL_LOCK_STATUS), 1, 1000000);
 }
 
-static void sdhci_o2_set_tuning_mode(struct sdhci_host *host)
+static void sdhci_o2_set_tuning_mode(struct sdhci_host *host, bool is_hw)
 {
 	u16 reg;
 
-	/* enable hardware tuning */
 	reg = sdhci_readw(host, O2_SD_VENDOR_SETTING);
-	reg &= ~O2_SD_HW_TUNING_DISABLE;
+
+	if (is_hw)
+		reg &= ~O2_SD_HW_TUNING_DISABLE;
+	else
+		reg |= O2_SD_HW_TUNING_DISABLE;
+
 	sdhci_writew(host, reg, O2_SD_VENDOR_SETTING);
 }
 
@@ -251,7 +255,7 @@ static int sdhci_o2_wait_dll_lock(struct sdhci_host *host)
 				  1, 5000);
 }
 
-static void __sdhci_o2_execute_tuning(struct sdhci_host *host, u32 opcode)
+static void __sdhci_o2_execute_hw_tuning(struct sdhci_host *host, u32 opcode)
 {
 	int i;
 
@@ -276,6 +280,74 @@ static void __sdhci_o2_execute_tuning(struct sdhci_host *host, u32 opcode)
 	pr_info("%s: Tuning failed, falling back to fixed sampling clock\n",
 		mmc_hostname(host->mmc));
 	sdhci_reset_tuning(host);
+}
+
+static int __sdhci_o2_retry_send_tuning(struct sdhci_host *host, u32 opcode)
+{
+	int i, ret;
+
+	for (i = 0; i < 3; i++) {
+		ret = mmc_send_tuning(host->mmc, opcode, NULL);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int __sdhci_o2_execute_sw_tuning(struct sdhci_host *host, u32 opcode)
+{
+	int ret, phase_num, i, this_win, this_size, max_win, max_size;
+	struct sdhci_pci_slot *slot = sdhci_priv(host);
+	struct sdhci_pci_chip *chip = slot->chip;
+
+	switch (chip->pdev->device) {
+	case PCI_DEVICE_ID_O2_FUJIN2:
+	case PCI_DEVICE_ID_O2_SEABIRD1:
+		phase_num = 11;
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	max_size = 0;
+	for (this_win = 0, i = 0; i < phase_num * 2; i++) {
+		sdhci_o2_set_dll_and_phase(host, i % phase_num);
+
+		ret = sdhci_o2_wait_dll_lock(host);
+		if (ret) {
+			pr_warn("%s: DLL doesn't lock during SW tuning\n",
+				mmc_hostname(host->mmc));
+			return ret;
+		}
+
+		ret = __sdhci_o2_retry_send_tuning(host, opcode);
+		if (ret) {
+			pr_info("%s: %d doesnt work: %d\n", __func__, i, ret);
+
+			this_size = i - this_win;
+			if (this_size > max_size) {
+				max_win = this_win;
+				max_size = this_size;
+			}
+
+			this_win = i + 1;
+		}
+	}
+
+	if (max_size == 0) {
+		pr_warn("%s: SW tuning failed\n", mmc_hostname(host->mmc));
+		sdhci_o2_set_dll_and_phase(host, O2_SD_FIX_PHASE);
+
+		return -EIO;
+	}
+
+	pr_info("%s: selected phase %d, window size = %d\n", __func__,
+		(max_win + max_size) / 2 % phase_num, max_size);
+
+	sdhci_o2_set_dll_and_phase(host, (max_win + max_size) / 2 % phase_num);
+
+	return 0;
 }
 
 /*
@@ -360,7 +432,7 @@ static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	struct sdhci_host *host = mmc_priv(mmc);
 	struct sdhci_pci_slot *slot = sdhci_priv(host);
 	struct sdhci_pci_chip *chip = slot->chip;
-	int current_bus_width = 0;
+	int current_bus_width = 0, ret;
 	u16 scratch = 0;
 
 	/*
@@ -417,13 +489,23 @@ static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		sdhci_set_bus_width(host, MMC_BUS_WIDTH_4);
 	}
 
-	sdhci_o2_set_tuning_mode(host);
+	switch (chip->pdev->device) {
+	case PCI_DEVICE_ID_O2_FUJIN2:
+	case PCI_DEVICE_ID_O2_SEABIRD1:
+		/* Hardware tuning sometimes fails on these devices */
+		sdhci_o2_set_tuning_mode(host, false);
+		ret = __sdhci_o2_execute_sw_tuning(host, opcode);
+		break;
+	default:
+		sdhci_o2_set_tuning_mode(host, true);
 
-	sdhci_start_tuning(host);
+		sdhci_start_tuning(host);
+		__sdhci_o2_execute_hw_tuning(host, opcode);
+		sdhci_end_tuning(host);
 
-	__sdhci_o2_execute_tuning(host, opcode);
-
-	sdhci_end_tuning(host);
+		ret = 0;
+		break;
+	}
 
 	if (current_bus_width == MMC_BUS_WIDTH_8) {
 		mmc->ios.bus_width = MMC_BUS_WIDTH_8;
@@ -439,7 +521,7 @@ static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	sdhci_reset(host, SDHCI_RESET_DATA);
 
 	host->flags &= ~SDHCI_HS400_TUNING;
-	return 0;
+	return ret;
 }
 
 static void o2_pci_led_enable(struct sdhci_pci_chip *chip)
