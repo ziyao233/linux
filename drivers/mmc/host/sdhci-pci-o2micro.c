@@ -59,7 +59,7 @@
 #define O2_SD_SEL_DLL		BIT(16)
 #define O2_SD_FREG4_ENABLE_CLK_SET	BIT(22)
 #define O2_SD_PHASE_MASK	GENMASK(23, 20)
-#define O2_SD_FIX_PHASE		FIELD_PREP(O2_SD_PHASE_MASK, 0x9)
+#define O2_SD_FIX_PHASE		0x9
 
 #define O2_SD_VENDOR_SETTING	0x110
 #define O2_SD_VENDOR_SETTING2	0x1C8
@@ -207,6 +207,50 @@ static void sdhci_o2_set_tuning_mode(struct sdhci_host *host)
 	sdhci_writew(host, reg, O2_SD_VENDOR_SETTING);
 }
 
+static void sdhci_o2_set_dll_and_phase(struct sdhci_host *host, u8 phase)
+{
+	struct sdhci_pci_slot *slot = sdhci_priv(host);
+	struct sdhci_pci_chip *chip = slot->chip;
+	u32 scratch_32;
+	u8 scratch_8;
+
+	/* Stop clk */
+	scratch_32 = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	scratch_32 &= ~SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, scratch_32, SDHCI_CLOCK_CONTROL);
+
+	/* UnLock WP */
+	pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
+	scratch_8 &= 0x7f;
+	pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
+
+	/* Set pcr 0x354[16] to choose dll clock, and set its phase */
+	pci_read_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, &scratch_32);
+	scratch_32 &= ~(O2_SD_SEL_DLL | O2_SD_PHASE_MASK);
+	scratch_32 |= (O2_SD_SEL_DLL | FIELD_PREP(O2_SD_PHASE_MASK, phase));
+	pci_write_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, scratch_32);
+
+	/* Lock WP */
+	pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
+	scratch_8 |= 0x80;
+	pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
+
+	/* Start clk */
+	scratch_32 = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	scratch_32 |= SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, scratch_32, SDHCI_CLOCK_CONTROL);
+}
+
+static int sdhci_o2_wait_dll_lock(struct sdhci_host *host)
+{
+	u32 scratch32;
+
+	/* wait DLL lock, timeout value 5ms */
+	return readx_poll_timeout(sdhci_o2_pll_dll_wdt_control, host,
+				  scratch32, (scratch32 & O2_DLL_LOCK_STATUS),
+				  1, 5000);
+}
+
 static void __sdhci_o2_execute_tuning(struct sdhci_host *host, u32 opcode)
 {
 	int i;
@@ -317,10 +361,7 @@ static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	struct sdhci_pci_slot *slot = sdhci_priv(host);
 	struct sdhci_pci_chip *chip = slot->chip;
 	int current_bus_width = 0;
-	u32 scratch32 = 0;
 	u16 scratch = 0;
-	u8  scratch_8 = 0;
-	u32 reg_val;
 
 	/*
 	 * This handler implements the hardware tuning that is specific to
@@ -346,42 +387,15 @@ static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	case PCI_DEVICE_ID_O2_SEABIRD1:
 	case PCI_DEVICE_ID_O2_SDS1:
 	case PCI_DEVICE_ID_O2_FUJIN2:
-		/* Stop clk */
-		reg_val = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
-		reg_val &= ~SDHCI_CLOCK_CARD_EN;
-		sdhci_writew(host, reg_val, SDHCI_CLOCK_CONTROL);
-
 		if (host->timing == MMC_TIMING_MMC_HS200 ||
-		    host->timing == MMC_TIMING_UHS_SDR104) {
-			/* UnLock WP */
-			pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
-			scratch_8 &= 0x7f;
-			pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
-
-			/* Set pcr 0x354[16] to choose dll clock, and set the default phase */
-			pci_read_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, &reg_val);
-			reg_val &= ~(O2_SD_SEL_DLL | O2_SD_PHASE_MASK);
-			reg_val |= (O2_SD_SEL_DLL | O2_SD_FIX_PHASE);
-			pci_write_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, reg_val);
-
-			/* Lock WP */
-			pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
-			scratch_8 |= 0x80;
-			pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
-		}
-
-		/* Start clk */
-		reg_val = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
-		reg_val |= SDHCI_CLOCK_CARD_EN;
-		sdhci_writew(host, reg_val, SDHCI_CLOCK_CONTROL);
+		    host->timing == MMC_TIMING_UHS_SDR104)
+			sdhci_o2_set_dll_and_phase(host, O2_SD_FIX_PHASE);
 		break;
 	default:
 		break;
 	}
 
-	/* wait DLL lock, timeout value 5ms */
-	if (readx_poll_timeout(sdhci_o2_pll_dll_wdt_control, host,
-		scratch32, (scratch32 & O2_DLL_LOCK_STATUS), 1, 5000))
+	if (sdhci_o2_wait_dll_lock(host))
 		pr_warn("%s: DLL can't lock in 5ms after force L0 during tuning.\n",
 				mmc_hostname(host->mmc));
 	/*
