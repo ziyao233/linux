@@ -626,6 +626,17 @@ config HW_RANDOM_ROCKCHIP
 
 	  If unsure, say Y.
 
+config HW_RANDOM_SG2000
+	tristate "Sophgo SG2000 True Random Number Generator"
+	depends on OF
+	default m if ARCH_SOPHGO
+	help
+	  This driver provides kernel-side support for the True Random
+	  Number Generator hardware found on Sophgo SG2000 SoC.
+
+	  To compile this driver as a module, choose M here. The module
+	  will be called sg2000-trng.
+
 config HW_RANDOM_XILINX
 	tristate "Support for Xilinx True Random Generator"
 	depends on ZYNQMP_FIRMWARE || COMPILE_TEST
