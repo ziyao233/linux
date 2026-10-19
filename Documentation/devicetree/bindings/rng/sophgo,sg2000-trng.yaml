@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/rng/sophgo,sg2000-trng.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Sophgo SG2000 TRNG
+
+maintainers:
+  - Yao Zi <me@ziyao.cc>
+
+properties:
+  compatible:
+    const: sophgo,sg2000-trng
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - interrupts
+
+additionalProperties: false
+
+examples:
+  - |
+    rng@2070000 {
+        compatible = "sophgo,sg2000-trng";
+        reg = <0x02070000 0x10000>;
+        clocks = <&clk>;
+        interrupts = <42>;
+    };
