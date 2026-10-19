@@ -20,6 +20,13 @@
 		interrupt-parent = <&plic>;
 		dma-noncoherent;
 
+		trng: rng@2070000 {
+			compatible = "sophgo,sg2000-trng";
+			reg = <0x02070000 0x10000>;
+			clocks = <&clk CLK_EFUSE>;
+			interrupts = <SOC_PERIPHERAL_IRQ(76) IRQ_TYPE_LEVEL_HIGH>;
+		};
+
 		pinctrl: pinctrl@3001000 {
 			compatible = "sophgo,sg2000-pinctrl";
 			reg = <0x03001000 0x1000>,
